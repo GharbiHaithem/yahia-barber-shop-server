@@ -76,16 +76,19 @@ app.post("/api/reservations", async (req, res) => {
   try {
     const { fullname, date, time, services, message, mobile } = req.body;
 
-    // 🕓 Vérifier si la date est passée
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // pour comparer uniquement la date sans l’heure
+    // 🕓 Obtenir la date et l'heure actuelles
+    const now = new Date();
+    now.setSeconds(0, 0); // ignore les millisecondes
 
-    const selectedDate = new Date(date);
-    selectedDate.setHours(0, 0, 0, 0);
+    // 🧭 Convertir la date du formulaire
+    const [hour, minute] = time.split(":").map(Number);
+    const selectedDateTime = new Date(date);
+    selectedDateTime.setHours(hour, minute, 0, 0);
 
-    if (selectedDate < today) {
+    // 🔒 Vérifier si la date + heure est passée
+    if (selectedDateTime < now) {
       return res.status(400).json({
-        message: `❌ Impossible de réserver pour une date passée (${date}).`,
+        message: `❌ Ce créneau (${date} à ${time}) est déjà passé.`,
       });
     }
 
@@ -109,7 +112,7 @@ app.post("/api/reservations", async (req, res) => {
 
     await newReservation.save();
 
-    // ✅ Émettre l'événement Socket.io (si tu utilises io globalement)
+    // ✅ Émettre l'événement Socket.io
     io.emit("newReservation", newReservation);
     console.log("📢 Nouvelle réservation :", newReservation.fullname);
 
