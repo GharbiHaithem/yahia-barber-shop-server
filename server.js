@@ -80,23 +80,22 @@ app.post("/api/reservations", async (req, res) => {
     const now = new Date();
     now.setSeconds(0, 0); // ignore les millisecondes
 
-    // 🧭 Convertir la date du formulaire
-    const [hour, minute] = time.split(":").map(Number);
+    // 🧭 Construire la date complète avec ton "time" (ex: 10 = 10h00)
     const selectedDateTime = new Date(date);
-    selectedDateTime.setHours(hour, minute, 0, 0);
+    selectedDateTime.setHours(Number(time), 0, 0, 0);
 
-    // 🔒 Vérifier si la date + heure est passée
+    // 🔒 Vérifier si la date + heure est déjà passée
     if (selectedDateTime < now) {
       return res.status(400).json({
-        message: `❌ Ce créneau (${date} à ${time}) est déjà passé.`,
+        message: `❌ Ce créneau (${date} à ${time}h) est déjà passé.`,
       });
     }
 
-    // 🔢 Vérifier le nombre max de réservations pour ce créneau
+    // 🔢 Vérifier si le créneau est complet (3 réservations max)
     const existingCount = await Reservation.countDocuments({ date, time });
     if (existingCount >= 3) {
       return res.status(400).json({
-        message: `❌ Ce créneau (${time}) est déjà complet (${existingCount}/3 réservations).`,
+        message: `❌ Ce créneau (${time}h) est déjà complet (${existingCount}/3 réservations).`,
       });
     }
 
@@ -112,7 +111,7 @@ app.post("/api/reservations", async (req, res) => {
 
     await newReservation.save();
 
-    // ✅ Émettre l'événement Socket.io
+    // ✅ Émettre la notification Socket.io
     io.emit("newReservation", newReservation);
     console.log("📢 Nouvelle réservation :", newReservation.fullname);
 
@@ -122,6 +121,7 @@ app.post("/api/reservations", async (req, res) => {
     res.status(500).json({ message: "Erreur serveur" });
   }
 });
+
 
 
 // --- MONGOOSE ---
