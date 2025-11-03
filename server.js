@@ -76,7 +76,20 @@ app.post("/api/reservations", async (req, res) => {
   try {
     const { fullname, date, time, services, message, mobile } = req.body;
 
-    // Vérifier le nombre max de réservations pour un créneau
+    // 🕓 Vérifier si la date est passée
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // pour comparer uniquement la date sans l’heure
+
+    const selectedDate = new Date(date);
+    selectedDate.setHours(0, 0, 0, 0);
+
+    if (selectedDate < today) {
+      return res.status(400).json({
+        message: `❌ Impossible de réserver pour une date passée (${date}).`,
+      });
+    }
+
+    // 🔢 Vérifier le nombre max de réservations pour ce créneau
     const existingCount = await Reservation.countDocuments({ date, time });
     if (existingCount >= 3) {
       return res.status(400).json({
@@ -84,21 +97,21 @@ app.post("/api/reservations", async (req, res) => {
       });
     }
 
-    // Créer la réservation
+    // ✅ Créer la réservation
     const newReservation = new Reservation({
       fullname,
       date,
       time,
       services,
       message,
-      mobile
+      mobile,
     });
 
     await newReservation.save();
 
-    // ✅ Émettre l'événement Socket.io
-    req.io.emit("newReservation", newReservation);
-    console.log("📢 Émission socket envoyée :", newReservation.fullname);
+    // ✅ Émettre l'événement Socket.io (si tu utilises io globalement)
+    io.emit("newReservation", newReservation);
+    console.log("📢 Nouvelle réservation :", newReservation.fullname);
 
     res.status(201).json(newReservation);
   } catch (error) {
@@ -106,6 +119,7 @@ app.post("/api/reservations", async (req, res) => {
     res.status(500).json({ message: "Erreur serveur" });
   }
 });
+
 
 // --- MONGOOSE ---
 mongoose
