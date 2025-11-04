@@ -76,26 +76,73 @@ app.post("/api/reservations", async (req, res) => {
   try {
     const { fullname, date, time, services, message, mobile } = req.body;
 
-    // 🕓 Obtenir la date et l'heure actuelles
-    const now = new Date();
-    now.setSeconds(0, 0); // ignore les millisecondes
+    if (!fullname || !date || !time) {
+      return res.status(400).json({ message: "⚠️ Champs manquants" });
+    }
 
-    // 🧭 Construire la date complète avec ton "time" (ex: 10 = 10h00)
+    const now = new Date();
+    now.setSeconds(0, 0);
+
     const selectedDateTime = new Date(date);
     selectedDateTime.setHours(Number(time), 0, 0, 0);
 
-    // 🔒 Vérifier si la date + heure est déjà passée
     if (selectedDateTime < now) {
       return res.status(400).json({
         message: `❌ Ce créneau (${date} à ${time}h) est déjà passé.`,
       });
     }
 
-    // 🔢 Vérifier si le créneau est complet (3 réservations max)
-    const existingCount = await Reservation.countDocuments({ date, time });
-    if (existingCount >= 3) {
+    // 🕒 Déterminer la durée du service
+    let duration = 1;
+    const normalized = (services || "").toLowerCase().trim();
+    if (
+      normalized === "protéine + coupe cheveux" ||
+      (normalized.includes("protéine") && normalized.includes("coupe"))
+    ) {
+      duration = 2;
+    }
+
+    // ---- Vérification double sens ----
+    // 1️⃣ Créneaux que cette réservation va occuper
+    const heuresDemandées = [];
+    for (let i = 0; i < duration; i++) {
+      heuresDemandées.push(String(Number(time) + i));
+    }
+
+    // 2️⃣ Trouver toutes les réservations du même jour
+    const existingReservations = await Reservation.find({ date });
+
+    // 3️⃣ Vérifier les chevauchements (services longs)
+    for (const r of existingReservations) {
+      let dureeExistante = 1;
+      const serviceExistant = (r.services || "").toLowerCase();
+
+      if (
+        serviceExistant === "protéine + coupe cheveux" ||
+        (serviceExistant.includes("protéine") && serviceExistant.includes("coupe"))
+      ) {
+        dureeExistante = 2;
+      }
+
+      // heures bloquées par cette réservation existante
+      const heuresOccupées = [];
+      for (let i = 0; i < dureeExistante; i++) {
+        heuresOccupées.push(String(Number(r.time) + i));
+      }
+
+      // 🔍 Vérifie si le créneau demandé chevauche un autre
+      if (heuresDemandées.some((h) => heuresOccupées.includes(h))) {
+        return res.status(400).json({
+          message: `❌ Le créneau ${time}h chevauche une réservation existante (${r.time}h - service "${r.services}").`,
+        });
+      }
+    }
+
+    // 4️⃣ Vérifier le nombre max (2 réservations par heure)
+    const countAtSameHour = await Reservation.countDocuments({ date, time });
+    if (countAtSameHour >= 2) {
       return res.status(400).json({
-        message: `❌ Ce créneau (${time}h) est déjà complet (${existingCount}/3 réservations).`,
+        message: `❌ Le créneau ${time}h est complet (${countAtSameHour}/2 réservations).`,
       });
     }
 
@@ -103,7 +150,7 @@ app.post("/api/reservations", async (req, res) => {
     const newReservation = new Reservation({
       fullname,
       date,
-      time,
+      time: String(time),
       services,
       message,
       mobile,
@@ -111,16 +158,18 @@ app.post("/api/reservations", async (req, res) => {
 
     await newReservation.save();
 
-    // ✅ Émettre la notification Socket.io
+    // 🔔 Émettre la notification Socket.io
     io.emit("newReservation", newReservation);
     console.log("📢 Nouvelle réservation :", newReservation.fullname);
 
     res.status(201).json(newReservation);
+
   } catch (error) {
     console.error("Erreur lors de la réservation :", error);
     res.status(500).json({ message: "Erreur serveur" });
   }
 });
+
 
 
 
