@@ -171,6 +171,55 @@ app.post("/api/reservations", async (req, res) => {
 });
 
 
+app.get("/api/reservations/disabled/:date", async (req, res) => {
+  try {
+    const { date } = req.params;
+    const existingReservations = await Reservation.find({ date });
+
+    let disabledHours = new Set();
+
+    existingReservations.forEach((r) => {
+      let duree = 1;
+      const s = (r.services || "").toLowerCase();
+
+      if (
+        s === "protéine + coupe cheveux" ||
+        (s.includes("protéine") && s.includes("coupe"))
+      ) {
+        duree = 2;
+      }
+
+      for (let i = 0; i < duree; i++) {
+        disabledHours.add(String(Number(r.time) + i));
+      }
+    });
+
+    // 🔒 Supprimer les heures passées du jour actuel
+    const now = new Date();
+    const today = now.toISOString().split("T")[0];
+    if (date === today) {
+      const currentHour = now.getHours();
+      for (let h = 0; h <= currentHour; h++) {
+        disabledHours.add(String(h));
+      }
+    }
+
+    // 🔥 Ajouter les heures pleines (2 réservations max par heure)
+    const allTimes = existingReservations.map((r) => r.time);
+    const hourCounts = allTimes.reduce((acc, h) => {
+      acc[h] = (acc[h] || 0) + 1;
+      return acc;
+    }, {});
+    for (const [hour, count] of Object.entries(hourCounts)) {
+      if (count >= 2) disabledHours.add(hour);
+    }
+
+    res.json({ disabled: Array.from(disabledHours) });
+  } catch (err) {
+    console.error("Erreur disabled hours:", err);
+    res.status(500).json({ message: "Erreur serveur" });
+  }
+});
 
 
 // --- MONGOOSE ---
